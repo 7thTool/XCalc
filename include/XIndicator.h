@@ -8,235 +8,501 @@
 #include <bitset>
 #include <boost/variant.hpp>
 
-#include "XCalcMgr.h"
+#include "XCalc.h"
 
 namespace XCalc
 {
-
-//这里的参数会影响计算结果
-struct InputVal
+template <class Manager, class T, class Info = IndicatorInfo, class DataInfo = IndicatorDataInfo, class BufferInfo = IndicatorBufferInfo>
+class Indicator
 {
-	std::string name;
-	boost::variant value;
-	uint32_t number:1;
-	uint32_t digits:4;
-	uint32_t visible:1;
-	uint32_t reserved:26;
-};
+	typedef Indicator<T> This;
 
-struct IndexInfo
-{
-	std::string name;
-	uint32_t type:4;			//INDICATOR_INDEX_TYPE
-	uint32_t shift:8;			//指标偏移
-	uint32_t begin:8;			//指标开始
-	uint32_t draw:4;			//INDICATOR_DRAW_TYPE
-	uint32_t line:4;			//INDICATOR_LINE_TYPE
-	uint32_t next:4;			//画线关联指标线
-	uint32_t :0;
-	uint32_t digits:4;			//指标精度,如果指定了精度就不使用商品的digits
-	uint32_t width:4;			//线宽
-	uint32_t color;				//指标颜色
-	//double min_value;			//指标最大值
-	//double max_value;			//指标最小值
-	//double base_value;		//基准值
-	//int level_count:8;		//水平线数目
-	//int level_style:24;		//水平线风格
-	//uint32_t level_color;		//水平线颜色
-};
+  protected:
+	Manager &mgr_;
+	//正常计算指标都父对象指针都为空，因为可以被多个父指标共同引用，但是如果不为空，说明该计算指标属于特定指标，比如策略交易指标
+	T *parent_;
+	//指标信息(上下文和计算信息)
+	Info info_;
+	DataInfo data_;
+	BufferInfo buffer_;
 
-struct tagIndexVal
-{
-	union
+	bool inited_;	 //是否初始化了
+	size_t calc_num_; //累计计算次数
+
+	//策略/池指标计算相关信息
+	typedef std::set<DataInfo> mapPool;
+	mapPool pool_;
+
+	std::shared_mutex mutex_; //读写锁,计算时独占写，其他共享读
+
+	typedef std::set<std::string> mapSymbol;
+	mapSymbol symbols_;
+
+	bool IsRefSymbol(const std::string &symbol)
 	{
-		double dvalue;
-		char value[8];
+		if (symbol.empty())
+		{
+			return false;
+		}
+		if (symbols_.find(symbol) != symbols_.end())
+		{
+			return true;
+		}
+		return false;
+	}
+
+	//引用的数据
+	class RefCalcData
+	{
+	  public:
+		RefCalcData()
+		{
+			dataptr = NULL;
+			refcount = 0;
+		}
+
+		voidptr dataptr; //计算数据
+		long refcount;   //引用计数
 	};
-};
+	typedef std::map<DataInfo, RefCalcData> RefCalcDataMap;
+	RefCalcDataMap refcalcdatas;
 
-//context
-struct IndicatorInfo
-{
-	std::string name; //指标名称
-	std::vector<InputVal> inputs;					//输入信息,除了显示信息外的可以用户修改的计算信息
-	std::vector<IndexInfo indexs;					//index信息
-};
-
-struct IndicatorCalcInfo
-{
-	std::string symbol;								//当前标示
-	voidptr dataptr;								//计算对象数据
-};
-
-struct IndicatorBufferInfo
-{
-	int counted;										//已经计算指标数目
-	std::vector<double*> indexs;						//指标线数据指针，最多MAX_INDICATOR_INDEX条指标
-}INDICATORCALCINFO,*PINDICATORCALCINFO;
-
-class InputHelper
-{
-  public:
-	INPUTINFO *m_input;
-
-  public:
-	InputHelper::InputHelper(const char *name, INPUTINFO *input) : m_input(input)
+	bool IsRefData(const DataInfo &data)
 	{
-		IndicatorHelper helper(name, m_input);
-	}
-
-	InputHelper::InputHelper(INPUTINFO *input) : m_input(input)
-	{
-		//
-	}
-
-	long InputHelper::SetInput(const char *name, const char *value, bool visible, bool addorupdate)
-	{
-		ASSERT(m_input);
-		int i;
-		for (i = 0; i < m_input->count; i++)
+		auto it = refcalcdatas.begin();
+		for (; it != refcalcdatas.end(); ++it)
 		{
-			if (stricmp(name, m_input->input[i].name) == 0)
-			{
-				break;
-			}
-		}
-		if (i < m_input->count || addorupdate)
-		{
-			if (i >= m_input->count && addorupdate)
-			{
-				m_input->count += 1;
-				strncpy(m_input->input[i].name, name, MAX_INDICATOR_NAME);
-			}
-			strcpy(m_input->input[i].value, value);
-			m_input->input[i].number = false;
-			m_input->input[i].digits = 0;
-			m_input->input[i].visible = visible;
-			return 1;
-		}
-		return 0;
-	}
-
-	long InputHelper::SetInput(const char *name, double value, bool visible, bool addorupdate)
-	{
-		ASSERT(m_input);
-		int i;
-		for (i = 0; i < m_input->count; i++)
-		{
-			if (stricmp(name, m_input->input[i].name) == 0)
-			{
-				break;
-			}
-		}
-		if (i < m_input->count || addorupdate)
-		{
-			if (i >= m_input->count && addorupdate)
-			{
-				m_input->count += 1;
-				strncpy(m_input->input[i].name, name, MAX_INDICATOR_NAME);
-			}
-			int digits = GetDecimalDigits(value);
-			char szFormat[MAX_INDICATOR_STRING];
-			sprintf(szFormat, "%%.%df", digits);
-			sprintf(m_input->input[i].value, szFormat, value);
-			m_input->input[i].number = true;
-			m_input->input[i].digits = digits;
-			m_input->input[i].visible = visible;
-			return 1;
-		}
-	}
-
-	const char *InputHelper::GetInput(const char *name, bool *visible) const
-	{
-		int i, j;
-		for (i = 0; i < m_input->count; i++)
-		{
-			if (stricmp(name, m_input->input[i].name) == 0)
-			{
-				if (visible)
-				{
-					*visible = m_input->input[i].visible;
-				}
-				return m_input->input[i].value;
-			}
-		}
-		return _tcsnull();
-	}
-
-	bool InputHelper::IsLess(const INPUTINFO *input) const
-	{
-		ASSERT(input);
-		int i, j, cmp = 0;
-		ASSERT(m_input->count == input->count);
-		{
-			for (i = 0; i < m_input->count; i++)
-			{
-				for (j = 0; j < input->count; j++)
-				{
-					if (stricmp(m_input->input[i].name, input->input[j].name) == 0)
-					{
-						break;
-					}
-				}
-				if (j >= input->count)
-				{
-					ASSERT(0);
-					continue;
-				}
-				cmp = stricmp(m_input->input[i].value, input->input[j].value);
-				if (cmp != 0)
-				{
-#ifdef _DEBUG
-					double dvalue1 = strto<double>(m_input->input[i].value);
-					double dvalue2 = strto<double>(input->input[j].value);
-					ASSERT(!IsZeroFloat(dvalue1 - dvalue2));
-#endif //
-					break;
-				}
-			}
-		}
-		return cmp < 0;
-	}
-
-	bool InputHelper::IsEqual(const INPUTINFO *input) const
-	{
-		ASSERT(input);
-		int i, j;
-		ASSERT(m_input->count == input->count);
-		{
-			for (i = 0; i < m_input->count; i++)
-			{
-				for (j = 0; j < input->count; j++)
-				{
-					if (stricmp(m_input->input[i].name, input->input[j].name) == 0)
-					{
-						break;
-					}
-				}
-				if (j >= input->count)
-				{
-					ASSERT(0);
-					continue;
-				}
-				if (stricmp(m_input->input[i].value, input->input[j].value))
-				{
-#ifdef _DEBUG
-					double dvalue1 = strto<double>(m_input->input[i].value);
-					double dvalue2 = strto<double>(input->input[j].value);
-					ASSERT(!IsZeroFloat(dvalue1 - dvalue2));
-#endif //
-					break;
-				}
-			}
-			if (i >= m_input->count)
+			if (it->first == data)
 			{
 				return true;
 			}
 		}
 		return false;
 	}
-};
+	voidptr RefData(const DataInfo &data)
+	{
+		RefCalcData &value = refcalcdatas[data];
+		value.dataptr = mgr_.RefData(data);
+		value.refcount += 1;
+		return (voidptr)value.dataptr;
+	}
+	long ReleaseData(voidptr dataptr)
+	{
+		ASSERT(0);
+		auto it = refcalcdatas.begin();
+		for (; it != refcalcdatas.end(); ++it)
+		{
+			if (dataptr == it->second.dataptr)
+			{
+				break;
+			}
+		}
+		if (it != refcalcdatas.end())
+		{
+			mgr_.ReleaseData(dataptr);
+			it->second.refcount -= 1;
+			if (it->second.refcount <= 0)
+			{
+				refcalcdatas.erase(it);
+			}
+			else
+			{
+				return it->second.refcount;
+			}
+		}
+	}
+	void ReleaseDataAll()
+	{
+		data_.dataptr = NULL;
+		auto it = refcalcdatas.begin();
+		for (; it != refcalcdatas.end(); ++it)
+		{
+			for (int i = 0; i < it->second.refcount; i++)
+			{
+				mgr_.ReleaseData(it->second.dataptr);
+			}
+		}
+		refcalcdatas.clear();
+	}
 
+	//引用的指标
+	class RefIndicator
+	{
+	  public:
+		RefIndicator()
+		{
+			//indicator = NULL;
+			refcount = 0;
+		}
+
+		std::shared_ptr<XIndicator> indicator; //计算数据
+		long refcount;						   //引用计数
+	};
+	typedef std::map<Info, RefIndicator> RefIndicatorMap;
+	RefIndicatorMap refindicators;
+
+	XIndicator *RefIndicator(const IndicatorInfo &info, const DataInfo &data)
+	{
+		XIndicator *pIndicator = mgr_.RefIndicator(info, data);
+		if (pIndicator)
+		{
+			refindicators[pIndicator] += 1;
+		}
+		return pIndicator;
+	}
+	long ReleaseIndicator(XIndicator *handle)
+	{
+		ASSERT(0);
+		//if (handle) {
+		auto it = refindicators.find(handle);
+		if (it != refindicators.end())
+		{
+			mgr_.ReleaseIndicator((XIndicator *)this, handle);
+			it->second -= 1;
+			if (it->second <= 0)
+			{
+				refindicators.erase(it);
+			}
+			else
+			{
+				return it->second;
+			}
+		}
+		//}
+		return 0;
+	}
+	void ReleaseIndicatorAll()
+	{
+		auto it = refindicators.begin();
+		for (; it != refindicators.end(); ++it)
+		{
+			for (int i = 0; i < it->second; i++)
+			{
+				mgr_.ReleaseIndicator((XIndicator *)this, it->first);
+			}
+		}
+		refindicators.clear();
+	}
+
+  public:
+	Indicator(Manager &mgr) : mgr_(mgr), inited_(false), calc_num_(0) {}
+	~Indicator() {}
+
+	inline T *parent() { return parent_; }
+	inline const std::string &name() { return info_.name; }
+
+	bool Create(T *parent, const std::string &name)
+	{
+		T *pT = static_cast<T *>(this);
+		parent_ = parent;
+		info_.name = name;
+		return pT->Init();
+		return true;
+	}
+
+	void Destroy()
+	{
+		DeInit();
+	}
+
+	inline bool IsStrategy() { return info_.type == eStrategy; }
+	inline bool IsInit() { return inited_; }
+	inline bool IsPool() { return IsStrategy(); }
+	inline bool IsCalc() { return calc_num_ != 0; }
+	inline size_t GetCalcNum() { return calc_num_; }
+
+	bool SetInputInfo(const InputInfo &info)
+	{
+		std::unique_lock<std::shared_mutex> write_lock(mutex_);
+		for (size_t i = 0; i < info_.inputs.size())
+		{
+			if (info_.inputs[index].name == info.name)
+			{
+				info_.inputs[index] = info;
+				return true;
+				break;
+			}
+		}
+		return false;
+	}
+	bool GetInputInfo(InputInfo &info)
+	{
+		std::shared_lock<std::shared_mutex> read_lock(mutex_);
+		for (size_t i = 0; i < info_.inputs.size())
+		{
+			if (info_.inputs[index].name == info.name)
+			{
+				info = info_.inputs[index];
+				return true;
+				break;
+			}
+		}
+		return false;
+	}
+
+	bool SetIndexInfo(size_t index, const IndexInfo &info)
+	{
+		std::unique_lock<std::shared_mutex> write_lock(mutex_);
+		if (index < info_.indexs.size())
+		{
+			info_.indexs[index] = info;
+			return true;
+		}
+		return false;
+	}
+	bool GetIndexInfo(size_t index, IndexInfo &info)
+	{
+		std::shared_lock<std::shared_mutex> read_lock(mutex_);
+		if (index < info_.indexs.size())
+		{
+			info = info_.indexs[index];
+			return true;
+		}
+		return false;
+	}
+
+	void SetCalcData(const DataInfo &data)
+	{
+		std::unique_lock<std::shared_mutex> write_lock(mutex_);
+		data_ = data;
+	}
+	DataInfo GetCalcData()
+	{
+		std::shared_lock<std::shared_mutex> read_lock(mutex_);
+		return data_;
+	}
+
+	long GetCalcCount()
+	{
+		std::shared_lock<std::shared_mutex> read_lock(mutex_);
+		return buffer_.counted;
+	}
+	double GetIndexValue(size_t index, size_t offset)
+	{
+		std::shared_lock<std::shared_mutex> read_lock(mutex_);
+		return buffer_.indexs[index][offset];
+	}
+
+	bool UpdateData(const std::string &symbol)
+	{
+		std::unique_lock<std::shared_mutex> write_lock(mutex_);
+		T *pT = static_cast<T *>(this);
+		if (pT->IsRefSymbol(symbol))
+		{
+			DataInfo data = data_;
+			data.symbol = symbol;
+			pT->Calc(&data);
+			return true;
+		}
+		return false;
+	}
+
+	void ClearData()
+	{
+		std::unique_lock<std::shared_mutex> write_lock(mutex_);
+		T *pT = static_cast<T *>(this);
+		pT->Calc(nullptr);
+	}
+
+  protected:
+	void Calc(DataInfo *data)
+	{
+		T *pT = static_cast<T *>(this);
+
+		pT->ReleaseDataAll();
+		pT->ReleaseIndicatorAll();
+
+		if (data)
+		{
+			data_ = *data;
+			bool bPool = pT->IsPool();
+			if (bPool)
+			{
+				bool bDoFilter = false;
+				if (!pT->IsCalc())
+				{
+					bDoFilter = true;
+				}
+				else
+				{
+					bDoFilter = data_.symbol.empty();
+				}
+
+				if (!bDoFilter)
+				{
+					pT->CleanPool();
+					pT->Filter();
+				}
+				else
+				{
+					ReRefPool();
+				}
+			}
+
+			bool bDoCalc = !data_.symbol.empty();
+			if (bDoCalc)
+			{
+				//计算
+				if (!data_.dataptr)
+				{
+					data_.dataptr = (voidptr)pT->RefData(data_);
+				}
+				int count = mgr_.GetDataCount(data_.dataptr);
+				if (count < buffer_.counted)
+				{
+					buffer_.counted = 0; //重新计算
+				}
+				else
+				{
+					buffer_.counted = buffer_.counted - 1;
+				}
+				if (count > buffer_.counted)
+				{
+					pT->Calc();
+					buffer_.counted = count;
+				}
+			}
+		}
+		else
+		{
+			ASSERT(0);
+			data_.Clear();
+			buffer_.Clear();
+			rlt = pT->Calc();
+		}
+	}
+
+	bool Init()
+	{
+		T *pT = static_cast<T *>(this);
+		ASSERT(!inited_);
+		inited_ = pT->DoInit();
+		return inited_;
+	}
+
+	void Filter()
+	{
+		T *pT = static_cast<T *>(this);
+		pT->DoPreFilter();
+		pT->DoFilter();
+		pT->DoAfterFilter();
+	}
+
+	void Calc()
+	{
+		T *pT = static_cast<T *>(this);
+		pT->DoPreCalc();
+		pT->DoCalc();
+		pT->DoAfterCalc();
+	}
+
+	void DeInit()
+	{
+		T *pT = static_cast<T *>(this);
+		pT->DoDeInit();
+		pT->CleanPool();
+		pT->ReleaseDataAll();
+		pT->ReleaseIndicatorAll();
+	}
+
+	bool DoInit()
+	{
+		return false;
+	}
+
+	void DoInput()
+	{
+	}
+
+	void DoPreFilter()
+	{
+	}
+
+	void DoFilter()
+	{
+	}
+
+	void DoAfterFilter()
+	{
+	}
+
+	void DoPreCalc()
+	{
+	}
+
+	void DoCalc()
+	{
+	}
+
+	void DoAfterCalc()
+	{
+		calc_num_++;
+	}
+
+	void DoDeInit()
+	{
+	}
+
+	void AddPool(const DataInfo &data)
+	{
+		T *pT = static_cast<T *>(this);
+		ASSERT(pT->IsPool());
+		if (pool_.find(data) == pool_.end())
+		{
+			data.dataptr = pT->RefData(data);
+			pool_.insert(data);
+		}
+	}
+
+	void RemovePool(const DataInfo &data)
+	{
+		T *pT = static_cast<T *>(this);
+		ASSERT(pT->IsPool());
+		auto it = pool_.find(data);
+		if (it != pool_.end())
+		{
+			pT->ReleaseData(*it);
+			pool_.erase(it);
+		}
+	}
+
+	size_t PoolsTotal()
+	{
+		return pool_.size();
+	}
+
+	bool IsRefPool(const DataInfo &data)
+	{
+		if (pool_.find(data) != pool_.end())
+		{
+			return true;
+		}
+		return false;
+	}
+
+	void ReRefPool()
+	{
+		T *pT = static_cast<T *>(this);
+		ASSERT(pT->IsPool());
+		//重新引用所有Pool对象
+		auto it = pool_.begin();
+		for (; it != pool_.end(); ++it)
+		{
+			it->dataptr = pT->RefData(*it);
+		}
+	}
+
+	void CleanPool()
+	{
+		/*ReleaseDataAll已经释放了数据对象了
+		auto it = pool_.begin();
+		for (; it!=pool_.end(); ++it)
+		{
+			mgr_.ReleaseData(*it);
+		}*/
+		pool_.clear();
+	}
+}; // namespace XCalc
 } // namespace XCalc
 
-#endif //_H_MARKETAPP_H_
+#endif //_H_CALC_H_

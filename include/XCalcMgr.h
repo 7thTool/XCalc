@@ -10,11 +10,6 @@
 
 namespace XCalc
 {
-	typedef void* iHandle;
-	typedef void* dataptr;
-
-	enum XLogLevel { log_error, log_warn, log_debug, log_info };
-
 	class XIndicatorSpi
 	{
 	public:
@@ -29,21 +24,6 @@ namespace XCalc
 
 		//Calc
 		virtual void OnCalc(iHandle handle) { }
-	};
-
-    class XIndicatorBufferProvider
-	{
-	public:
-        //Buffer
-        virtual voidptr OnRefCalcBuffer(iHandle handle) { return 0; }
-		virtual void OnReleaseCalcBuffer(voidptr bufptr) { }
-        virtual int OnAllocCalcBuffer(voidptr bufptr, int count, int size) { return 0; }
-
-        virtual int OnGetIndexCount(voidptr bufptr) { return 0; }
-        virtual int OnGetIndexSize(voidptr bufptr) { return 0; }
-        virtual int OnGetIndexMaxSize(voidptr bufptr) { return 0; }
-
-        virtual void OnSetIndexValue(voidptr bufptr, int index, int offset, double value) { }
 	};
 
 	class XIndicatorDataProvider
@@ -78,12 +58,6 @@ namespace XCalc
 		*/
 		virtual void RegisterSpi(XIndicatorSpi *pSpi) = 0;
 
-        /**
-		* @brief 注册指标回调接口
-		* @param[in] pProvider 派生自指标回调接口类的实例
-		* @return 无
-		*/
-		virtual void RegisterBufferProvider(XIndicatorBufferProvider *pProvider) = 0;
 		/**
 		* @brief 注册行情回调接口
 		* @param[in] pProvider 派生自行情回调接口类的实例
@@ -97,8 +71,8 @@ namespace XCalc
 		* 如果接口使用者自己提供行情数据，即RegisterQuoteProvider了，就需要每次历史数据变化时调用此接口
 		* @return 无
 		*/
-		virtual void UpdateCalcData(const char* symbol) = 0;
-		
+		virtual void UpdateData(const char* symbol) = 0;
+
 	protected:
 		virtual ~XIndicatorApi() {};
 	};
