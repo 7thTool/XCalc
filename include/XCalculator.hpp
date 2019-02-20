@@ -1,51 +1,40 @@
-#ifndef _H_CALC_H_
-#define _H_CALC_H_
+#pragma once
+#ifndef _H_XCALCULATOR_HPP_
+#define _H_XCALCULATOR_HPP_
 
-#include <string>
-#include <vector>
-#include <memory>
-#include <atomic>
-#include <bitset>
-#include <boost/variant.hpp>
+#include "XCalcDef.hpp"
+#include "XCalcProvider.hpp"
 
-#include "XCalc.h"
+namespace XCalc {
 
-namespace XCalc
+template <class T
+, class DataProvider, class HandleProvider
+, class CalcInfo, class DataInfo, class BufferInfo>
+class XCalculator
 {
-template <class Manager, class T, class Info = IndicatorInfo, class DataInfo = IndicatorDataInfo, class BufferInfo = IndicatorBufferInfo>
-class Indicator
-{
-	typedef Indicator<T> This;
-
+	typedef XCalculator<T,DataProvider,HandleProvider,Info,DataInfo,BufferInfo> This;
+	typedef DataProvider::DataSet DataSet;
   protected:
-	Manager &mgr_;
+	DataProvider* data_provider_;
+	HandleProvider* handle_provider_;
 	//正常计算指标都父对象指针都为空，因为可以被多个父指标共同引用，但是如果不为空，说明该计算指标属于特定指标，比如策略交易指标
 	T *parent_;
-	//指标信息(上下文和计算信息)
-	Info info_;
-	DataInfo data_;
-	BufferInfo buffer_;
+	//计算信息
+	CalcInfo info_; //计算器描述信息
 
 	bool inited_;	 //是否初始化了
-	size_t calc_num_; //累计计算次数
-
-	//策略/池指标计算相关信息
-	typedef std::set<DataInfo> mapPool;
-	mapPool pool_;
 
 	std::shared_mutex mutex_; //读写锁,计算时独占写，其他共享读
 
-	typedef std::set<std::string> mapSymbol;
-	mapSymbol symbols_;
+	typedef std::set<std::string> SymbolSet;
+	SymbolSet symbols_;
 
 	bool IsRefSymbol(const std::string &symbol)
 	{
-		if (symbol.empty())
-		{
+		if (symbol.empty()) {
 			return false;
 		}
-		if (symbols_.find(symbol) != symbols_.end())
-		{
+		if (symbols_.find(symbol) != symbols_.end()) {
 			return true;
 		}
 		return false;
@@ -61,7 +50,7 @@ class Indicator
 			refcount = 0;
 		}
 
-		voidptr dataptr; //计算数据
+		std::shared_ptr<DataSet> dataptr; //计算数据
 		long refcount;   //引用计数
 	};
 	typedef std::map<DataInfo, RefCalcData> RefCalcDataMap;
@@ -79,14 +68,14 @@ class Indicator
 		}
 		return false;
 	}
-	voidptr RefData(const DataInfo &data)
+	std::shared_ptr<DataSet> RefData(const DataInfo &data)
 	{
 		RefCalcData &value = refcalcdatas[data];
-		value.dataptr = mgr_.RefData(data);
+		value.dataptr = data_provider_->RefCalcData(data);
 		value.refcount += 1;
 		return (voidptr)value.dataptr;
 	}
-	long ReleaseData(voidptr dataptr)
+	long ReleaseData(std::shared_ptr<DataSet> dataptr)
 	{
 		ASSERT(0);
 		auto it = refcalcdatas.begin();
@@ -119,49 +108,49 @@ class Indicator
 		{
 			for (int i = 0; i < it->second.refcount; i++)
 			{
-				mgr_.ReleaseData(it->second.dataptr);
+				data_provider_->ReleaseData(it->second.dataptr);
 			}
 		}
 		refcalcdatas.clear();
 	}
 
 	//引用的指标
-	class RefIndicator
+	class RefCalculator
 	{
 	  public:
-		RefIndicator()
+		RefCalculator()
 		{
-			//indicator = NULL;
+			//calculator = NULL;
 			refcount = 0;
 		}
 
-		std::shared_ptr<XIndicator> indicator; //计算数据
-		long refcount;						   //引用计数
+		std::shared_ptr<XCalculator> calculator; //计算数据
+		long refcount; //引用计数
 	};
-	typedef std::map<Info, RefIndicator> RefIndicatorMap;
-	RefIndicatorMap refindicators;
+	typedef std::map<Info, RefCalculator> RefCalculatorMap;
+	RefCalculatorMap refcalculators;
 
-	XIndicator *RefIndicator(const IndicatorInfo &info, const DataInfo &data)
+	std::shared_ptr<XCalculator> RefCalculator(const CalculatorInfo &calc_info, const DataInfo &data_info)
 	{
-		XIndicator *pIndicator = mgr_.RefIndicator(info, data);
-		if (pIndicator)
+		std::shared_ptr<XCalculator> calculator = handle_provider_->RefHandle(calc_info, data_info);
+		if (calculator)
 		{
-			refindicators[pIndicator] += 1;
+			refcalculators[calc_info] += 1;
 		}
-		return pIndicator;
+		return calculator;
 	}
-	long ReleaseIndicator(XIndicator *handle)
+	long ReleaseCalculator(XCalculator *handle)
 	{
 		ASSERT(0);
 		//if (handle) {
-		auto it = refindicators.find(handle);
-		if (it != refindicators.end())
+		auto it = refCalculators.find(handle);
+		if (it != refCalculators.end())
 		{
-			mgr_.ReleaseIndicator((XIndicator *)this, handle);
+			mgr_.ReleaseCalculator((XCalculator *)this, handle);
 			it->second -= 1;
 			if (it->second <= 0)
 			{
-				refindicators.erase(it);
+				refCalculators.erase(it);
 			}
 			else
 			{
@@ -171,31 +160,36 @@ class Indicator
 		//}
 		return 0;
 	}
-	void ReleaseIndicatorAll()
+	void ReleaseCalculatorAll()
 	{
-		auto it = refindicators.begin();
-		for (; it != refindicators.end(); ++it)
+		auto it = refCalculators.begin();
+		for (; it != refCalculators.end(); ++it)
 		{
 			for (int i = 0; i < it->second; i++)
 			{
-				mgr_.ReleaseIndicator((XIndicator *)this, it->first);
+				mgr_.ReleaseCalculator((XCalculator *)this, it->first);
 			}
 		}
-		refindicators.clear();
+		refCalculators.clear();
 	}
 
   public:
-	Indicator(Manager &mgr) : mgr_(mgr), inited_(false), calc_num_(0) {}
-	~Indicator() {}
+	Calculator(DataProvider* data_provider, HandleProvider* handle_provider) 
+	: data_provider_(data_provider), handle_provider_(handle_provider), inited_(false), calc_num_(0) {
+
+	}
+	~Calculator() {
+
+	}
 
 	inline T *parent() { return parent_; }
 	inline const std::string &name() { return info_.name; }
 
-	bool Create(T *parent, const std::string &name)
+	bool Create(T *parent, const CalcInfo &info)
 	{
 		T *pT = static_cast<T *>(this);
 		parent_ = parent;
-		info_.name = name;
+		info_ = info;
 		return pT->Init();
 		return true;
 	}
@@ -208,8 +202,6 @@ class Indicator
 	inline bool IsStrategy() { return info_.type == eStrategy; }
 	inline bool IsInit() { return inited_; }
 	inline bool IsPool() { return IsStrategy(); }
-	inline bool IsCalc() { return calc_num_ != 0; }
-	inline size_t GetCalcNum() { return calc_num_; }
 
 	bool SetInputInfo(const InputInfo &info)
 	{
@@ -261,56 +253,12 @@ class Indicator
 		return false;
 	}
 
-	void SetCalcData(const DataInfo &data)
-	{
-		std::unique_lock<std::shared_mutex> write_lock(mutex_);
-		data_ = data;
-	}
-	DataInfo GetCalcData()
-	{
-		std::shared_lock<std::shared_mutex> read_lock(mutex_);
-		return data_;
-	}
-
-	long GetCalcCount()
-	{
-		std::shared_lock<std::shared_mutex> read_lock(mutex_);
-		return buffer_.counted;
-	}
-	double GetIndexValue(size_t index, size_t offset)
-	{
-		std::shared_lock<std::shared_mutex> read_lock(mutex_);
-		return buffer_.indexs[index][offset];
-	}
-
-	bool UpdateData(const std::string &symbol)
-	{
-		std::unique_lock<std::shared_mutex> write_lock(mutex_);
-		T *pT = static_cast<T *>(this);
-		if (pT->IsRefSymbol(symbol))
-		{
-			DataInfo data = data_;
-			data.symbol = symbol;
-			pT->Calc(&data);
-			return true;
-		}
-		return false;
-	}
-
-	void ClearData()
-	{
-		std::unique_lock<std::shared_mutex> write_lock(mutex_);
-		T *pT = static_cast<T *>(this);
-		pT->Calc(nullptr);
-	}
-
-  protected:
-	void Calc(DataInfo *data)
+	void Calc(DataInfo *data, std::shared_ptr<BufferInfo>& buffer)
 	{
 		T *pT = static_cast<T *>(this);
 
 		pT->ReleaseDataAll();
-		pT->ReleaseIndicatorAll();
+		pT->ReleaseCalculatorAll();
 
 		if (data)
 		{
@@ -402,7 +350,7 @@ class Indicator
 		pT->DoDeInit();
 		pT->CleanPool();
 		pT->ReleaseDataAll();
-		pT->ReleaseIndicatorAll();
+		pT->ReleaseCalculatorAll();
 	}
 
 	bool DoInit()
@@ -442,67 +390,7 @@ class Indicator
 	void DoDeInit()
 	{
 	}
-
-	void AddPool(const DataInfo &data)
-	{
-		T *pT = static_cast<T *>(this);
-		ASSERT(pT->IsPool());
-		if (pool_.find(data) == pool_.end())
-		{
-			data.dataptr = pT->RefData(data);
-			pool_.insert(data);
-		}
-	}
-
-	void RemovePool(const DataInfo &data)
-	{
-		T *pT = static_cast<T *>(this);
-		ASSERT(pT->IsPool());
-		auto it = pool_.find(data);
-		if (it != pool_.end())
-		{
-			pT->ReleaseData(*it);
-			pool_.erase(it);
-		}
-	}
-
-	size_t PoolsTotal()
-	{
-		return pool_.size();
-	}
-
-	bool IsRefPool(const DataInfo &data)
-	{
-		if (pool_.find(data) != pool_.end())
-		{
-			return true;
-		}
-		return false;
-	}
-
-	void ReRefPool()
-	{
-		T *pT = static_cast<T *>(this);
-		ASSERT(pT->IsPool());
-		//重新引用所有Pool对象
-		auto it = pool_.begin();
-		for (; it != pool_.end(); ++it)
-		{
-			it->dataptr = pT->RefData(*it);
-		}
-	}
-
-	void CleanPool()
-	{
-		/*ReleaseDataAll已经释放了数据对象了
-		auto it = pool_.begin();
-		for (; it!=pool_.end(); ++it)
-		{
-			mgr_.ReleaseData(*it);
-		}*/
-		pool_.clear();
-	}
 }; // namespace XCalc
 } // namespace XCalc
 
-#endif //_H_CALC_H_
+#endif //_H_XCALCULATOR_HPP_
