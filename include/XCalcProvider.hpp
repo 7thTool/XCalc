@@ -5,26 +5,36 @@
 #include "XCalcDef.hpp"
 
 namespace XCalc {
-	template<class T, class DataSet, class DataInfo>
-	class XDataProvider
+	template<class T, class DataSet>
+	class XDataSetProvider
 	{
 	public:
-		typedef DataInfo::DataSet DataSet;
-		XDataProvider() {};
-		virtual ~XDataProvider() {};
+		XDataSetProvider() {};
+		virtual ~XDataSetProvider() {};
 
-		virtual std::shared_ptr<DataSet> RefCalcData(DataInfo& info) { return 0; }
+		virtual bool RefDataSet(std::shared_ptr<DataSet>& dataset) { return false; }
 	};
 
-	template<class T, class Calculator, class CalcInfo, class DataInfo, class BufferInfo>
+	template<class T, class Calculator>
 	class XCalculatorProvider
 	{
 	public:
 		XCalculatorProvider() {};
 		virtual ~XCalculatorProvider() {};
 
-		std::shared_ptr<Calculator> RefCalculator(CalcInfo* calc_info, DataInfo* data_info);
+		virtual bool RefCalculator(std::shared_ptr<Calculator>& calculator) { return false; }
 	};
+
+	template<class T, class BufferSet>
+	class XBufferSetProvider
+	{
+	public:
+		XBufferSetProvider() {};
+		virtual ~XBufferSetProvider() {};
+
+		virtual bool RefBufferSet(std::shared_ptr<BufferSet>& bufferset) { return false; }
+	};
+
 } // namespace XCalc
 
 #endif //_H_XCALC_PROVIDER_HPP_

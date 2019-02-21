@@ -8,8 +8,11 @@
 #include <atomic>
 #include <bitset>
 #include <boost/variant.hpp>
+#include <xutility/XDataSet.hpp>
 
 namespace XCalc {
+
+	const size_t idf_recalc = idf_next;
 
 typedef boost::variant<int64_t, double, std::string> variant;
 
@@ -20,51 +23,110 @@ struct InputInfo
 	variant value;
 };
 
-struct IndexInfo
+struct BufferInfo
 {
 	std::string name;
 };
 
-typedef std::vector<double> IndexVal;
-typedef std::vector<IndexVal> BufferSet;
+typedef std::vector<double> Buffer;
+typedef std::vector<Buffer> VecBuffer;
 
-//context
-template<class Calculator>
-struct CalculatorInfo
+template<class Calculator, class DataSet>
+struct BufferSet : public XDataSet
 {
-	std::string name;			   //指标名称
-	std::vector<InputVal> inputs;  //输入信息,除了显示信息外的可以用户修改的计算信息
-	std::vector<IndexInfo> indexs; //index信息
-	std::shared_ptr<Calculator> calcptr; //计算器
-};
+public:
+	std::vector<std::shared_ptr<Calculator>> refcalculators; //引用的计算器
+	std::vector<std::shared_ptr<DataSet>> refdatasets; //引用的数据集
+	std::shared_ptr<VecBuffer> buffers; //结果数据集
+	int buffer_size; //有效buffer数目，即已经计算指标数目
 
-template<class DataSet>
-struct CalculatorDataInfo
-{
-	std::string symbol; //当前标示
-	std::shared_ptr<DataSet> dataptr;	//计算数据
-
-	void Clear()
+	BufferSet(size_t count):buffers(std::make_shared<VecBuffer>(count)),counted(0)
 	{
-		symbol.clear();
-		dataptr = nullptr;
+
 	}
-};
 
-template<class BufferSet>
-struct CalculatorBufferInfo
-{
-	std::shared_ptr<BufferSet> buffptr; //结果数据
-	int counted; //已经计算指标数目
-
-	void Clear()
+	inline void Clear()
 	{
-		for(size_t i = 0; i < indexs.size(); i++)
+		ClearCalculator();
+		ClearDataSet();
+		ClearBuffer();
+	}
+
+	inline void ClearCalculator() 
+	{
+		refcalculators.clear();
+	}
+	
+	inline void ClearDataSet() 
+	{
+		refdatasets.clear();
+	}
+	
+	inline void ClearBuffer()
+	{
+		for(size_t i = 0; i < buffers.size(); i++)
 		{
-			indexs[i].clear();
+			buffers[i].clear();
 		}
 		counted = 0;
 	}
+};
+
+//context
+struct CalculatorInfo
+{
+	std::string name;			   //指标名称
+	std::vector<InputInfo> inputs;  //输入信息,除了显示信息外的可以用户修改的计算信息
+	std::vector<BufferInfo> indexs; //index信息
+
+	inline const std::string &name() { return name; }
+	
+	bool SetInputInfo(const InputInfo &info)
+	{
+		for (size_t i = 0; i < inputs.size())
+		{
+			if (inputs[index].name == info.name)
+			{
+				inputs[index] = info;
+				return true;
+				break;
+			}
+		}
+		return false;
+	}
+	bool GetInputInfo(InputInfo &info)
+	{
+		for (size_t i = 0; i < inputs.size())
+		{
+			if (inputs[index].name == info.name)
+			{
+				info = inputs[index];
+				return true;
+				break;
+			}
+		}
+		return false;
+	}
+
+	bool SetBufferInfo(size_t index, const IndexInfo &info)
+	{
+		if (index < indexs.size())
+		{
+			indexs[index] = info;
+			return true;
+		}
+		return false;
+	}
+	bool GetBufferInfo(size_t index, IndexInfo &info)
+	{
+		if (index < indexs.size())
+		{
+			info = indexs[index];
+			return true;
+		}
+		return false;
+	}
+
 };
 
 //boost::get<std::string>(v)

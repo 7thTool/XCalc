@@ -7,21 +7,29 @@
 
 namespace XCalc {
 
-template <class T, class Info = IndicatorInfo, class DataInfo = IndicatorDataInfo, class BufferInfo = IndicatorBufferInfo>
-class XCalcMgr : public XHandleProvider
+template <class T, class DataSetProvider, class CalcInfo, class DataSet, class BufferSet>
+class XCalcMgr 
+: public XCalculatorProvider<T,CalcInfo>
+, public XBufferSetProvider<T,BufferSet>
 {
-protected:
-	XDataProvider* data_provider_;
 public:
-	XCalcMgr():data_provider_(nullptr) {
+	typedef XCalculatorProvider<T,CalcInfo> CalculatorProvider;
+	typedef XBufferSetProvider<T,BufferSet> BufferSetProvider;
+protected:
+	DataSetProvider* dataset_provider_;
+public:
+	XCalcMgr():dataset_provider_(nullptr) {
 
 	}
 
-	inline void SetDataProvider(XDataProvider* data_provider) { data_provider_ = data_provider; }
-	inline XDataProvider* GetDataProvider() { return data_provider_; }
-	
-	//
-	UpdateData(DataInfo& info) {};
+	~XCalcMgr() {
+
+	}
+
+	inline void SetDataSetProvider(DataSetProvider* dataset_provider) { dataset_provider_ = dataset_provider; }
+	inline DataSetProvider* GetDataSetProvider() { return dataset_provider_; }
+	inline CalculatorProvider* GetCalculatorProvider() { return this; }
+	inline BufferSetProvider* BufferSetProvider() { return this; }
 };
 
 } // namespace XCalc
