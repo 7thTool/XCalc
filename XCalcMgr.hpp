@@ -7,13 +7,13 @@
 
 namespace XCalc {
 
-template <class T, class DataSetProvider, class CalcInfo, class DataSet, class BufferSet>
+template <class T, class DataSetProvider, class Calculator, class DataSet, class BufferSet>
 class XCalcMgr 
-: public XCalculatorProvider<T,CalcInfo>
+: public XCalculatorProvider<T,Calculator>
 , public XBufferSetProvider<T,BufferSet>
 {
 public:
-	typedef XCalculatorProvider<T,CalcInfo> CalculatorProvider;
+	typedef XCalculatorProvider<T,Calculator> CalculatorProvider;
 	typedef XBufferSetProvider<T,BufferSet> BufferSetProvider;
 protected:
 	DataSetProvider* dataset_provider_;
