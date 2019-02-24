@@ -8,26 +8,24 @@
 namespace XCalc
 {
 
-template <class T, class CalcInfo, class DataSetProvider, class BufferSetProvider>
-class XCalculator : public CalcInfo
+template <class T, class TCalcInfo, class TDataSetProvider, class TBufferSetProvider>
+class XCalculator : public TCalcInfo, public std::enable_shared_from_this<T>
 {
-	typedef XCalculator<T, CalcInfo, DataSetProvider, BufferSetProvider> This;
+	typedef XCalculator<T, TCalcInfo, TDataSetProvider, TBufferSetProvider> This;
+	typedef TCalcInfo Base;
   public:
-	typedef DataSetProvider::DataSet DataSet;
-	typedef BufferSetProvider::BufferSet BufferSet;
-
-  protected:
-	DataSetProvider *dataset_provider_;
-	BufferSetProvider *bufferset_provider_;
+	typedef TCalcInfo CalcInfo;
+	typedef TDataSetProvider DataSetProvider;
+	typedef TBufferSetProvider BufferSetProvider;
+	typedef typename DataSetProvider::DataSet DataSet;
+	typedef typename BufferSetProvider::BufferSet BufferSet;
 
   public:
-	Calculator(DataProvider *dataset_provider, BufferSetProvider *bufferset_provider)
-		: dataset_provider_(dataset_provider), bufferset_provider_(bufferset_provider)
-	{
-	}
-	~Calculator()
-	{
-	}
+	using Base::Base;
+
+	inline const CalcInfo* GetInfo() { return this; }
+	inline DataSetProvider* GetDataSetProvider() { return nullptr; }
+	inline BufferSetProvider* GetBufferSetProvider() { return nullptr; }
 
 	inline bool CalcNeedRedo(std::shared_ptr<DataSet>& dataset, std::shared_ptr<BufferSet>& bufferset)
 	{
@@ -52,12 +50,12 @@ class XCalculator : public CalcInfo
 	{
 		T *pT = static_cast<T *>(this);
 		if(bufferset->IsEmpty()) {
-			bufferset->Init(this, dataset);
+			bufferset->Init(pT->shared_from_this(), dataset);
 		} else {
 			bool redo = pT->CalcNeedRedo(dataset, bufferset);
 			if(redo) 
 			{
-				bufferset->ClearBuffer(bufferset);
+				bufferset->ClearBuffer();
 			}
 			size_t buffer_count = dataset->GetBufferCount();
 			for(size_t i = 0; i < buffer_count; i++)

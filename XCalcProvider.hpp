@@ -5,18 +5,21 @@
 #include "XCalcDef.hpp"
 
 namespace XCalc {
-	template<class T, class DataSet>
+	template<class T, class TDataSet>
 	class XDataSetProvider
 	{
-	protected:
+	public:
+		typedef TDataSet DataSet;
 		struct DataSetPtrLess
 		{
-			bool operator()(const DataSet*& x, const DataSet*& y) const
+			bool operator()(const DataSet* const& x, const DataSet* const& y) const
 			{
 				return *x < *y;
 			}
 		};
-		std::map<DataSet*,std::shared_ptr<DataSet>,DataSetPtrLess> datasets_;
+		typedef std::map<const DataSet*,std::shared_ptr<DataSet>,DataSetPtrLess> DataSets;
+	protected:
+		DataSets datasets_;
 		std::mutex mutex_;
 	public:
 		XDataSetProvider() {};
@@ -36,20 +39,32 @@ namespace XCalc {
 			}
 			return nullptr; 
 		}
+		template<typename F>
+		inline void SafeHandle(F f)
+		{
+			std::lock_guard<std::mutex> lock(mutex_);
+			f(datasets_);
+		}
 	};
 
-	template<class T, class Calculator>
+	template<class T, class TCalculator>
 	class XCalculatorProvider
 	{
-	protected:
-		struct CalculatorPtrLess
+	public:
+		typedef TCalculator Calculator;
+		typedef typename Calculator::CalcInfo CalcInfo;
+		typedef typename CalcInfo::InputInfos InputInfos;
+		typedef typename CalcInfo::BufferInfos BufferInfos;
+		struct CalcInfoPtrLess
 		{
-			bool operator()(const Calculator*& x, const Calculator*& y) const
+			bool operator()(const CalcInfo* const& x, const CalcInfo* const& y) const
 			{
 				return *x < *y;
 			}
 		};
-		std::map<Calculator*,std::shared_ptr<Calculator>,CalculatorPtrLess> calculators_;
+		typedef std::map<const CalcInfo*,std::shared_ptr<Calculator>,CalcInfoPtrLess> Calculators;
+	protected:
+		Calculators calculators_;
 		std::mutex mutex_;
 	public:
 		XCalculatorProvider() {};
@@ -58,9 +73,9 @@ namespace XCalc {
 		inline void AddCalculator(std::shared_ptr<Calculator>& calculator) 
 		{ 
 			std::lock_guard<std::mutex> lock(mutex_);
-			calculators_[calculator.get()] = calculator;
+			calculators_[calculator->GetInfo()] = calculator;
 		}
-		inline std::shared_ptr<Calculator> RefCalculator(const Calculator& calcinfo) 
+		inline std::shared_ptr<Calculator> RefCalculator(const CalcInfo& calcinfo)
 		{ 
 			std::lock_guard<std::mutex> lock(mutex_);
 			auto it = calculators_.find(&calcinfo);
@@ -69,29 +84,50 @@ namespace XCalc {
 			}
 			return nullptr; 
 		}
+		inline std::shared_ptr<Calculator> RefCalculator(const std::string& name
+		, const InputInfos& inputs, const BufferInfos& buffers)
+		{ 
+			T* pT = static_cast<T*>(this);
+			CalcInfo calcinfo = {name, inputs, buffers};
+			return pT->RefCalculator(calcinfo);
+		}
+		template<typename F>
+		inline void SafeHandle(F f)
+		{
+			std::lock_guard<std::mutex> lock(mutex_);
+			f(calculators_);
+		}
 	};
 
-	template<class T, class BufferSet>
+	template<class T, class TBufferSet>
 	class XBufferSetProvider
 	{
-	protected:
+	public:
+		typedef TBufferSet BufferSet;
 		struct BufferSetPtrLess
 		{
-			bool operator()(const BufferSet*& x, const BufferSet*& y) const
+			bool operator()(const BufferSet* const& x, const BufferSet* const& y) const
 			{
 				return *x < *y;
 			}
 		};
-		std::map<BufferSet*,std::shared_ptr<BufferSet>,BufferSetPtrLess> buffersets_;
+		typedef std::map<const BufferSet*,std::shared_ptr<BufferSet>,BufferSetPtrLess> BufferSets;
+	protected:
+		BufferSets buffersets_;
 		std::mutex mutex_;
 	public:
 		XBufferSetProvider() {};
 		virtual ~XBufferSetProvider() {};
 
-		inline void AddBufferSet(std::shared_ptr<BufferSet>& bufferset) 
+		inline void AddBufferSet(const std::shared_ptr<BufferSet>& bufferset) 
 		{ 
 			std::lock_guard<std::mutex> lock(mutex_);
 			buffersets_[bufferset.get()] = bufferset;
+		}
+		inline void RemoveBufferSet(const std::shared_ptr<BufferSet>& bufferset)
+		{
+			std::lock_guard<std::mutex> lock(mutex_);
+			buffersets_.erase(bufferset.get());
 		}
 		inline std::shared_ptr<BufferSet> RefBufferSet(const BufferSet& buffinfo) 
 		{ 
@@ -101,6 +137,12 @@ namespace XCalc {
 				return it->second;
 			}
 			return nullptr; 
+		}
+		template<typename F>
+		inline void SafeHandle(F f)
+		{
+			std::lock_guard<std::mutex> lock(mutex_);
+			f(buffersets_);
 		}
 	};
 

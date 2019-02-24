@@ -4,50 +4,50 @@
 
 #include <string>
 #include <vector>
+#include <map>
+#include <unordered_map>
 #include <memory>
 #include <thread>
 #include <atomic>
-#include <bind>
-#include <function>
 #include <bitset>
 #include <boost/variant.hpp>
 
 namespace XCalc {
 
 //boost::get<std::string>(v)
-template <typename variant, typename Target>
-Target varto(const variant &arg, const Target &def = Target())
-{
-	try
-	{
-		Target o;
-		class var_visitor : public boost::static_visitor<void>
-		{
-		  private:
-			Target &o_;
+// template <typename variant, typename Target>
+// Target varto(const variant &arg, const Target &def = Target())
+// {
+// 	try
+// 	{
+// 		Target o;
+// 		class var_visitor : public boost::static_visitor<void>
+// 		{
+// 		  private:
+// 			Target &o_;
 
-		  public:
-			var_visitor(Target &o) : o_(o) {}
+// 		  public:
+// 			var_visitor(Target &o) : o_(o) {}
 
-			template <typename Type>
-			void operator()(Type &v) const
-			{
-				std::stringstream ss;
-				ss << v;
-				ss >> o;
-			}
-		};
-		boost::apply_visitor(var_visitor(o), arg);
-		return o;
-	}
-	catch (std::exception &e)
-	{
-	}
-	catch (...)
-	{
-	}
-	return def;
-}
+// 			template <typename Type>
+// 			void operator()(Type &v) const
+// 			{
+// 				std::stringstream ss;
+// 				ss << v;
+// 				ss >> o;
+// 			}
+// 		};
+// 		boost::apply_visitor(var_visitor(o), arg);
+// 		return o;
+// 	}
+// 	catch (std::exception &e)
+// 	{
+// 	}
+// 	catch (...)
+// 	{
+// 	}
+// 	return def;
+// }
 typedef boost::variant<int64_t, double, std::string> variant;
 
 //这里的参数会影响计算结果
@@ -66,7 +66,7 @@ struct InputInfo
             return (value < r.value);
     };
 
-    bool operator == (const CalculatorInfo &r) const
+    bool operator == (const InputInfo &r) const
     {
         return (name == r.name && value == r.value);
     }
@@ -81,28 +81,34 @@ struct BufferInfo
 		return name < r.name;
     };
 
-    bool operator == (const CalculatorInfo &r) const
+    bool operator == (const BufferInfo &r) const
     {
         return (name == r.name);
     }
 };
 
-typedef std::vector<double> Buffer;
-typedef std::vector<Buffer> VecBuffer;
-
 template<class Calculator, class DataSet>
 struct BufferSet : public DataSet
 {
 public:
+	typedef std::vector<double> Buffer;
+	typedef std::vector<Buffer> Buffers;
+	typedef std::vector<std::shared_ptr<DataSet>> RefDataSets;
+	typedef std::vector<std::shared_ptr<BufferSet>> RefBufferSets;
 	std::shared_ptr<Calculator> calculator; //计算器
-	//0是基础计算数据集，即Calc传递的数据集
-	std::vector<std::shared_ptr<DataSet>> datasets; //引用的数据集
-	VecBuffer buffers; //结果数据集
+	std::shared_ptr<DataSet> dataset; //计算数据集
+	RefDataSets refdatasets; //引用的数据集
+	RefBufferSets refbuffersets; //引用的数据集
+	Buffers buffers; //结果数据集
 	int buffer_size; //有效buffer数目，即已经计算指标数目
 
-	BufferSet():buffers(std::make_shared<VecBuffer>(count)),buffer_size(0)
+	BufferSet():buffer_size(0)
 	{
 		
+	}
+	BufferSet(std::shared_ptr<Calculator> calculator, std::shared_ptr<DataSet> dataset)
+	{
+		Init(calculator,dataset);
 	}
 
     bool operator < (const BufferSet & r) const
@@ -112,22 +118,24 @@ public:
         else if(*r.calculator < *calculator)
 			return false;
 		else
-            return (*datasets[0] < *r.datasets[0]);
+            return (*dataset < *r.dataset);
     };
 
     bool operator == (const BufferSet &r) const
     {
-        return (*calculator == *r.calculator && *datasets[0] == *r.datasets[0]);
+        return (*calculator == *r.calculator && *dataset == *r.dataset);
     }
 
 	inline bool IsEmpty() {
-		return !calculator || datasets.empty();
+		return !calculator || !dataset;
 	}
 
 	inline void Init(std::shared_ptr<Calculator> calculator, std::shared_ptr<DataSet> dataset)
 	{
 		this->calculator = calculator;
-		this->datasets.resize(1, dataset);
+		this->dataset = dataset;
+		this->refdatasets.clear();
+		this->refbuffersets.clear();
 		this->buffers.resize(calculator->GetBufferCount());
 		this->buffer_size = 0;
 	}
@@ -135,13 +143,15 @@ public:
 	inline void Clear()
 	{
 		calculator = nullptr;
-		ClearDataSet();
+		dataset = nullptr;
+		ClearRefData();
 		ClearBuffer();
 	}
 	
-	inline void ClearDataSet() 
+	inline void ClearRefData() 
 	{
-		datasets.clear();
+		refdatasets.clear();
+		refbuffersets.clear();
 	}
 	
 	inline void ClearBuffer()
@@ -159,28 +169,34 @@ template<class InputInfo, class BufferInfo>
 struct CalculatorInfo
 {
 public:
+	typedef std::vector<InputInfo> InputInfos;
+	typedef std::vector<BufferInfo> BufferInfos;
 	std::string name; //指标名称
-	std::vector<InputInfo> inputs; //输入信息,除了显示信息外的可以用户修改的计算信息
-	std::vector<BufferInfo> buffers; //index信息
+	InputInfos inputs; //输入信息
+	BufferInfos buffers; //输出信息
 
 	CalculatorInfo() {}
+	CalculatorInfo(const std::string& name, const InputInfos& inputs)
+	:name(name),inputs(inputs) {}
 
     bool operator < (const CalculatorInfo & r) const
     {
 		if (name < r.name)
             return true;
-        else if(*r.refcalculators[0] < *refcalculators[0])
+        else if(r.name < name)
 			return false;
-		else
-            return (*refdatasets[0] < *r.refdatasets[0]);
+		else {
+			return inputs < r.inputs;
+		}
+        return false;
     };
 
     bool operator == (const CalculatorInfo &r) const
     {
-        return (*refcalculators[0] == *r.refcalculators[0] && *refdatasets[0] == *r.refdatasets[0]);
+        return (name == r.name && inputs == r.inputs);
     }
 
-	inline const std::string &name() { return name; }
+	inline const std::string & GetName() { return name; }
 	
 	bool SetInputInfo(const InputInfo &info)
 	{
