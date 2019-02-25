@@ -84,13 +84,13 @@ namespace XCalc {
 			}
 			return nullptr; 
 		}
-		inline std::shared_ptr<Calculator> RefCalculator(const std::string& name
-		, const InputInfos& inputs, const BufferInfos& buffers)
-		{ 
-			T* pT = static_cast<T*>(this);
-			CalcInfo calcinfo = {name, inputs, buffers};
-			return pT->RefCalculator(calcinfo);
-		}
+		// inline std::shared_ptr<Calculator> RefCalculator(const std::string& name
+		// , const InputInfos& inputs, const BufferInfos& buffers)
+		// { 
+		// 	T* pT = static_cast<T*>(this);
+		// 	CalcInfo calcinfo = {name, inputs, buffers};
+		// 	return pT->RefCalculator(calcinfo);
+		// }
 		template<typename F>
 		inline void SafeHandle(F f)
 		{
