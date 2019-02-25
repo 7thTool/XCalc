@@ -111,19 +111,19 @@ public:
 		Init(calculator,dataset);
 	}
 
-    bool operator < (const BufferSet & r) const
+    inline bool operator < (const BufferSet & r) const
     {
-		if (*calculator < *r.calculator)
+		if (calculator < r.calculator)
             return true;
-        else if(*r.calculator < *calculator)
+        else if(r.calculator < calculator)
 			return false;
 		else
             return (*dataset < *r.dataset);
     };
 
-    bool operator == (const BufferSet &r) const
+    inline bool operator == (const BufferSet &r) const
     {
-        return (*calculator == *r.calculator && *dataset == *r.dataset);
+        return (calculator == r.calculator && *dataset == *r.dataset);
     }
 
 	inline bool IsEmpty() {
@@ -179,7 +179,7 @@ public:
 	CalculatorInfo(const std::string& name, const InputInfos& inputs)
 	:name(name),inputs(inputs) {}
 
-    bool operator < (const CalculatorInfo & r) const
+    inline bool operator < (const CalculatorInfo & r) const
     {
 		if (name < r.name)
             return true;
@@ -191,7 +191,7 @@ public:
         return false;
     };
 
-    bool operator == (const CalculatorInfo &r) const
+    inline bool operator == (const CalculatorInfo &r) const
     {
         return (name == r.name && inputs == r.inputs);
     }
