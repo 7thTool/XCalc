@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <memory>
 #include <thread>
+#include <mutex>
 #include <atomic>
 #include <bitset>
 #include <boost/variant.hpp>
