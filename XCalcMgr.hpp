@@ -9,7 +9,8 @@ namespace XCalc {
 
 template <class T, class DataSetProvider, class CalculatorProvider, class BufferSetProvider>
 class XCalcMgr 
-: public CalculatorProvider
+: public DataSetProvider
+, public CalculatorProvider
 , public BufferSetProvider
 {
 public:
@@ -19,10 +20,12 @@ public:
 	typedef typename CalculatorProvider::Calculators Calculators;
 	typedef typename BufferSetProvider::BufferSet BufferSet;
 	typedef typename BufferSetProvider::BufferSets BufferSets;
-protected:
-	DataSetProvider* dataset_provider_;
+//protected:
+	//DataSetProvider* dataset_provider_;
 public:
-	XCalcMgr():dataset_provider_(nullptr) {
+	XCalcMgr()
+	//:dataset_provider_(nullptr) 
+	{
 
 	}
 
@@ -30,8 +33,8 @@ public:
 
 	}
 
-	inline void SetDataSetProvider(DataSetProvider* dataset_provider) { dataset_provider_ = dataset_provider; }
-	inline DataSetProvider* GetDataSetProvider() { return dataset_provider_; }
+	//inline void SetDataSetProvider(DataSetProvider* dataset_provider) { dataset_provider_ = dataset_provider; }
+	inline DataSetProvider* GetDataSetProvider() { return this; }//dataset_provider_; }
 	inline CalculatorProvider* GetCalculatorProvider() { return this; }
 	inline BufferSetProvider* GetBufferSetProvider() { return this; }
 

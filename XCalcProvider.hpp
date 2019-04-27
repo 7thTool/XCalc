@@ -52,9 +52,11 @@ namespace XCalc {
 	{
 	public:
 		typedef TCalculator Calculator;
+		using Factory = std::function<std::shared_ptr<Calculator>(const std::string& name)>;
+		typedef std::map<std::string,Factory> Factorys;
 		typedef typename Calculator::CalcInfo CalcInfo;
-		typedef typename CalcInfo::InputInfos InputInfos;
-		typedef typename CalcInfo::BufferInfos BufferInfos;
+		typedef typename CalcInfo::InputSet InputSet;
+		typedef typename CalcInfo::BufferInfoSets BufferInfoSets;
 		struct CalcInfoPtrLess
 		{
 			bool operator()(const CalcInfo* const& x, const CalcInfo* const& y) const
@@ -64,16 +66,16 @@ namespace XCalc {
 		};
 		typedef std::map<const CalcInfo*,std::shared_ptr<Calculator>,CalcInfoPtrLess> Calculators;
 	protected:
+		Factorys factorys_;
 		Calculators calculators_;
 		std::mutex mutex_;
 	public:
 		XCalculatorProvider() {};
 		virtual ~XCalculatorProvider() {};
 
-		inline void AddCalculator(std::shared_ptr<Calculator>& calculator) 
-		{ 
-			std::lock_guard<std::mutex> lock(mutex_);
-			calculators_[calculator->GetInfo()] = calculator;
+		inline void AddFactory(const std::string& name, const Factory& f) 
+		{
+			factorys_[name] = f;
 		}
 		inline std::shared_ptr<Calculator> RefCalculator(const CalcInfo& calcinfo)
 		{ 
@@ -82,15 +84,16 @@ namespace XCalc {
 			if(it != calculators_.end()) {
 				return it->second;
 			}
-			return nullptr; 
+			auto it_f = factorys_.find(calcinfo.name);
+			if(it_f != factorys_.end()) {
+				auto ptr = it_f->second(calcinfo.name);
+				if(ptr) {
+					calculators_[ptr.get()] = ptr;
+				}
+				return ptr;
+			}
+			return nullptr;
 		}
-		// inline std::shared_ptr<Calculator> RefCalculator(const std::string& name
-		// , const InputInfos& inputs, const BufferInfos& buffers)
-		// { 
-		// 	T* pT = static_cast<T*>(this);
-		// 	CalcInfo calcinfo = {name, inputs, buffers};
-		// 	return pT->RefCalculator(calcinfo);
-		// }
 		template<typename F>
 		inline void SafeHandle(F f)
 		{
@@ -99,10 +102,12 @@ namespace XCalc {
 		}
 	};
 
-	template<class T, class TBufferSet>
+	template<class T, class TCalculator, class TDataSet, class TBufferSet>
 	class XBufferSetProvider
 	{
 	public:
+		typedef TCalculator Calculator;
+		typedef TDataSet DataSet;
 		typedef TBufferSet BufferSet;
 		struct BufferSetPtrLess
 		{
@@ -111,32 +116,58 @@ namespace XCalc {
 				return *x < *y;
 			}
 		};
-		typedef std::map<const BufferSet*,std::shared_ptr<BufferSet>,BufferSetPtrLess> BufferSets;
+		struct BufferSetEx : public BufferSet
+		{
+			using BufferSet::BufferSet;
+			int ref = 0;
+		};
+		typedef std::map<const BufferSet*,BufferSetEx*,BufferSetPtrLess> BufferSets;
 	protected:
 		BufferSets buffersets_;
-		std::mutex mutex_;
+		std::shared_mutex mutex_;
 	public:
 		XBufferSetProvider() {};
 		virtual ~XBufferSetProvider() {};
 
-		inline void AddBufferSet(const std::shared_ptr<BufferSet>& bufferset) 
+		inline BufferSet* RefBufferSet(const std::shared_ptr<Calculator> calculator, const std::shared_ptr<DataSet>& calcdata)
 		{ 
-			std::lock_guard<std::mutex> lock(mutex_);
-			buffersets_[bufferset.get()] = bufferset;
-		}
-		inline void RemoveBufferSet(const std::shared_ptr<BufferSet>& bufferset)
-		{
-			std::lock_guard<std::mutex> lock(mutex_);
-			buffersets_.erase(bufferset.get());
-		}
-		inline std::shared_ptr<BufferSet> RefBufferSet(const BufferSet& buffinfo) 
-		{ 
-			std::lock_guard<std::mutex> lock(mutex_);
+			std::unique_lock<std::shared_mutex> lock(mutex_);
+			BufferSet buffinfo = {calculator,calcdata};
 			auto it = buffersets_.find(&buffinfo);
 			if(it != buffersets_.end()) {
+				it->second->ref++;
 				return it->second;
+			} else {
+				auto bufferset = new BufferSetEx(calculator,calcdata);
+				if(bufferset) {
+					calculator->Calc(calcdata, bufferset);
+					bufferset->ref = 1;
+					buffersets_[bufferset] = bufferset;
+				}
 			}
 			return nullptr; 
+		}
+		inline void ReleaseBufferSet(BufferSet* dataset) 
+		{
+			BufferSetEx* bufferset = dynamic_cast<BufferSetEx*>(dataset);
+			if (!bufferset)
+			{
+				return;
+			}
+			std::unique_lock<std::shared_mutex> lock(mutex_);
+			int ref = --bufferset->ref;
+			auto it = buffersets_.find(dataset);
+			if (it != buffersets_.end())
+			{
+				if (ref == 0)
+				{
+					buffersets_.erase(it);
+				}
+			}
+			if (ref == 0)
+			{
+				delete bufferset;
+			}
 		}
 		template<typename F>
 		inline void SafeHandle(F f)

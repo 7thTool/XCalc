@@ -3,31 +3,26 @@
 #define _H_XCALCULATOR_HPP_
 
 #include "XCalcDef.hpp"
-#include "XCalcProvider.hpp"
 
 namespace XCalc
 {
 
-template <class T, class TCalcInfo, class TDataSetProvider, class TBufferSetProvider>
+template <class T, class TCalcInfo, class TDataSet, class TBufferSet>
 class XCalculator : public TCalcInfo, public std::enable_shared_from_this<T>
 {
-	typedef XCalculator<T, TCalcInfo, TDataSetProvider, TBufferSetProvider> This;
+	typedef XCalculator<T, TCalcInfo, TDataSet, TBufferSet> This;
 	typedef TCalcInfo Base;
   public:
 	typedef TCalcInfo CalcInfo;
-	typedef TDataSetProvider DataSetProvider;
-	typedef TBufferSetProvider BufferSetProvider;
-	typedef typename DataSetProvider::DataSet DataSet;
-	typedef typename BufferSetProvider::BufferSet BufferSet;
+	typedef typename TDataSet DataSet;
+	typedef typename TBufferSet BufferSet;
 
   public:
 	using Base::Base;
 
 	inline const CalcInfo* GetInfo() { return this; }
-	inline DataSetProvider* GetDataSetProvider() { return nullptr; }
-	inline BufferSetProvider* GetBufferSetProvider() { return nullptr; }
 
-	inline bool CalcNeedRedo(std::shared_ptr<DataSet>& dataset, std::shared_ptr<BufferSet>& bufferset)
+	inline bool CalcNeedRedo(std::shared_ptr<DataSet> dataset, BufferSet* bufferset)
 	{
 		size_t buffer_count = dataset->GetFieldCount();
 		for(size_t i = 0; i < buffer_count; i++)
@@ -41,12 +36,12 @@ class XCalculator : public TCalcInfo, public std::enable_shared_from_this<T>
 		return false;
 	}
 
-	inline void CalcClear(std::shared_ptr<DataSet>& dataset, std::shared_ptr<BufferSet>& bufferset)
+	inline void CalcClear(std::shared_ptr<DataSet> dataset, BufferSet* bufferset)
 	{
 		bufferset->ClearBuffer();
 	}
 
-	inline void CalcInit(std::shared_ptr<DataSet>& dataset, std::shared_ptr<BufferSet>& bufferset)
+	inline void CalcInit(std::shared_ptr<DataSet> dataset, BufferSet* bufferset)
 	{
 		T *pT = static_cast<T *>(this);
 		if(bufferset->IsEmpty()) {
@@ -57,25 +52,15 @@ class XCalculator : public TCalcInfo, public std::enable_shared_from_this<T>
 			{
 				bufferset->ClearBuffer();
 			}
-			size_t buffer_count = dataset->GetFieldCount();
-			for(size_t i = 0; i < buffer_count; i++)
-			{
-				size_t buffer_size = dataset->GetFieldSize(i);
-				if(bufferset->buffer_size > 0)
-				{
-					bufferset->buffer_size = bufferset->buffer_size - 1; //重新计算最后一条数据
-				}
-				bufferset->buffers[i].resize(buffer_size);
-			}
 		}
 	}
 	
-	inline void CalcDo(std::shared_ptr<DataSet>& dataset, std::shared_ptr<BufferSet>& bufferset)
+	inline void CalcDo(std::shared_ptr<DataSet> dataset, BufferSet* bufferset)
 	{
 		
 	}
 
-	inline void CalcDone(std::shared_ptr<DataSet>& dataset, std::shared_ptr<BufferSet>& bufferset)
+	inline void CalcDone(std::shared_ptr<DataSet> dataset, BufferSet* bufferset)
 	{
 		size_t buffer_count = dataset->GetFieldCount();
 		for(size_t i = 0; i < buffer_count; i++)
@@ -86,7 +71,7 @@ class XCalculator : public TCalcInfo, public std::enable_shared_from_this<T>
 		}
 	}
 
-	inline void Calc(std::shared_ptr<DataSet> dataset, std::shared_ptr<BufferSet> bufferset)
+	inline void Calc(std::shared_ptr<DataSet> dataset, BufferSet* bufferset)
 	{
 		T *pT = static_cast<T *>(this);
 		if (dataset)

@@ -9,6 +9,7 @@
 #include <memory>
 #include <thread>
 #include <mutex>
+#include <shared_mutex>
 #include <atomic>
 #include <bitset>
 #include <boost/variant.hpp>
@@ -73,7 +74,8 @@ struct InputInfo
     }
 };
 
-struct BufferInfo
+template<class BaseSet>
+struct BufferInfo : public BaseSet
 {
 	std::string name;
 
@@ -88,19 +90,16 @@ struct BufferInfo
     }
 };
 
-template<class Calculator, class DataSet>
-struct BufferSet : public DataSet
+template<class Calculator, class DataSet, class BaseSet>
+struct BufferSet : public BaseSet
 {
 public:
-	typedef std::vector<double> Buffer;
-	typedef std::vector<Buffer> Buffers;
 	typedef std::vector<std::shared_ptr<DataSet>> RefDataSets;
 	typedef std::vector<std::shared_ptr<BufferSet>> RefBufferSets;
 	std::shared_ptr<Calculator> calculator; //计算器
 	std::shared_ptr<DataSet> dataset; //计算数据集
 	RefDataSets refdatasets; //引用的数据集
 	RefBufferSets refbuffersets; //引用的数据集
-	Buffers buffers; //结果数据集
 	int buffer_size; //有效buffer数目，即已经计算指标数目
 
 	BufferSet():buffer_size(0)
@@ -137,7 +136,6 @@ public:
 		this->dataset = dataset;
 		this->refdatasets.clear();
 		this->refbuffersets.clear();
-		this->buffers.resize(calculator->GetBufferCount());
 		this->buffer_size = 0;
 	}
 
@@ -157,27 +155,25 @@ public:
 	
 	inline void ClearBuffer()
 	{
-		for(size_t i = 0; i < buffers.size(); i++)
-		{
-			buffers[i].clear();
-		}
 		buffer_size = 0;
 	}
 };
 
 //context
-template<class InputInfo, class BufferInfo>
-struct CalculatorInfo
+template<class TInputSet, class TBufferInfoSet, class BaseSet>
+struct CalculatorInfo : public BaseSet
 {
 public:
-	typedef std::vector<InputInfo> InputInfos;
-	typedef std::vector<BufferInfo> BufferInfos;
-	std::string name; //指标名称
-	InputInfos inputs; //输入信息
-	BufferInfos buffers; //输出信息
+	typedef TInputSet InputSet;
+	typedef TBufferInfoSet BufferInfoSet;
+	typedef std::vector<BufferInfoSet> BufferInfoSets;
+	const std::string name; //指标名称
+	InputSet inputs; //输入信息
+	BufferInfoSets buffers; //输出信息
 
-	CalculatorInfo() {}
-	CalculatorInfo(const std::string& name, const InputInfos& inputs)
+	//CalculatorInfo() {}
+	CalculatorInfo(const std::string& name):name(name) {}
+	CalculatorInfo(const std::string& name, const InputSet& inputs)
 	:name(name),inputs(inputs) {}
 
     inline bool operator < (const CalculatorInfo & r) const
@@ -196,57 +192,14 @@ public:
     {
         return (name == r.name && inputs == r.inputs);
     }
-
-	inline const std::string & GetName() { return name; }
-	
-	bool SetInputInfo(const InputInfo &info)
-	{
-		for (size_t index = 0; index < inputs.size(); index++)
-		{
-			if (inputs[index].name == info.name)
-			{
-				inputs[index] = info;
-				return true;
-				break;
-			}
-		}
-		return false;
-	}
-	bool GetInputInfo(InputInfo &info)
-	{
-		for (size_t index = 0; index < inputs.size(); index++)
-		{
-			if (inputs[index].name == info.name)
-			{
-				info = inputs[index];
-				return true;
-				break;
-			}
-		}
-		return false;
-	}
-	size_t GetInputCount() { return inputs.size(); }
-
-	bool SetBufferInfo(const BufferInfo &info)
+/*
+	bool SetBufferInfo(const BufferInfoSet &info)
 	{
 		for (size_t index = 0; index < buffers.size(); index++)
 		{
 			if (buffers[index].name == info.name)
 			{
 				buffers[index] = info;
-				return true;
-				break;
-			}
-		}
-		return false;
-	}
-	bool GetBufferInfo(BufferInfo &info)
-	{
-		for (size_t index = 0; index < buffers.size(); index++)
-		{
-			if (buffers[index].name == info.name)
-			{
-				info = buffers[index];
 				return true;
 				break;
 			}
@@ -271,7 +224,7 @@ public:
 		}
 		return false;
 	}
-	size_t GetBufferCount() { return buffers.size(); }
+	size_t GetBufferCount() { return buffers.size(); }*/
 };
 
 } // namespace XCalc
