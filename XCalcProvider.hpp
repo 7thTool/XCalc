@@ -120,22 +120,33 @@ namespace XCalc {
 		{
 			using BufferSet::BufferSet;
 			int ref = 0;
+			int depth = 0;
 		};
 		typedef std::map<const BufferSet*,BufferSetEx*,BufferSetPtrLess> BufferSets;
+		typedef std::multimap<const BufferSetEx*,const BufferSetEx*> BufferSetCallers;
 	protected:
 		BufferSets buffersets_;
+		BufferSetCallers bufferset_callers_; //记录调用者信息
+		int max_depth_ = 0; //最大调用深度
 		std::shared_mutex mutex_;
 	public:
-		XBufferSetProvider() {};
-		virtual ~XBufferSetProvider() {};
+		XBufferSetProvider() {}
+		virtual ~XBufferSetProvider() {}
 
-		inline BufferSet* RefBufferSet(const std::shared_ptr<Calculator> calculator, const std::shared_ptr<DataSet>& calcdata)
+		inline void RemoveBufferSet() 
+		{
+			std::unique_lock<std::shared_mutex> lock(mutex_);
+			bufferset_callers_.clear();
+			buffersets_.clear();
+		}
+		inline BufferSet* RefBufferSet(const BufferSet* caller, const std::shared_ptr<Calculator> calculator, const std::shared_ptr<DataSet>& calcdata)
 		{ 
 			std::unique_lock<std::shared_mutex> lock(mutex_);
 			BufferSet buffinfo = {calculator,calcdata};
 			auto it = buffersets_.find(&buffinfo);
 			if(it != buffersets_.end()) {
 				it->second->ref++;
+				AddCaller(dynamic_cast<const BufferSetEx*>(caller), it->second);
 				return it->second;
 			} else {
 				auto bufferset = new BufferSetEx(calculator,calcdata);
@@ -143,17 +154,19 @@ namespace XCalc {
 					calculator->Calc(calcdata, bufferset);
 					bufferset->ref = 1;
 					buffersets_[bufferset] = bufferset;
+					AddCaller(dynamic_cast<const BufferSetEx*>(caller), bufferset);
 				}
 			}
 			return nullptr; 
 		}
-		inline void ReleaseBufferSet(BufferSet* dataset) 
+		inline void ReleaseBufferSet(const BufferSet* caller, BufferSet* dataset) 
 		{
 			BufferSetEx* bufferset = dynamic_cast<BufferSetEx*>(dataset);
 			if (!bufferset)
 			{
 				return;
 			}
+			RemoveCaller(dynamic_cast<const BufferSetEx*>(caller), bufferset);
 			std::unique_lock<std::shared_mutex> lock(mutex_);
 			int ref = --bufferset->ref;
 			auto it = buffersets_.find(dataset);
@@ -169,11 +182,53 @@ namespace XCalc {
 				delete bufferset;
 			}
 		}
+		inline size_t GetBufferSetCount() { return buffersets_.size(); }
 		template<typename F>
 		inline void SafeHandle(F f)
 		{
-			std::lock_guard<std::mutex> lock(mutex_);
-			f(buffersets_);
+			std::shared_lock<std::shared_mutex> lock(mutex_);
+			f(buffersets_, max_depth_);
+		}
+	protected:
+		inline void AddCaller(const BufferSetEx* caller, BufferSetEx* bufferset)
+		{
+			if(!caller) {
+				return;
+			}
+			bufferset_callers_.insert(std::make_pair(bufferset,caller));
+			int depth = 1;
+			if(bufferset->depth < depth) {
+				bufferset->depth = depth;
+			} else {
+				depth = bufferset->depth;
+			}
+			if (caller->depth >= depth) {
+				depth = caller->depth + 1;
+				bufferset->depth = depth;
+			}
+			if(depth > max_depth_) {
+				max_depth_ = depth;
+			}
+		}
+		inline void RemoveCaller(const BufferSetEx* caller, BufferSetEx* bufferset)
+		{
+			if(!caller) {
+				return;
+			}
+			auto pr = bufferset_callers_.equal_range(bufferset);
+			int depth = 0;
+			for(auto it = pr.first; it != pr.second; ++it)
+			{
+				if(it->second == caller)
+				{
+					it = bufferset_callers_.erase(it);
+					continue;
+				}
+				if (it->second->depth >= depth) {
+					depth = it->second->depth + 1;
+				}
+			}
+			bufferset->depth = depth;
 		}
 	};
 

@@ -48,44 +48,19 @@ public:
 		}
 	}
 
-	inline void Calc(std::shared_ptr<Calculator> calculator, std::shared_ptr<DataSet> & dataset, std::shared_ptr<BufferSet> & bufferset)
+	inline void Calc(std::shared_ptr<Calculator> calculator, std::shared_ptr<DataSet> & dataset, BufferSet* bufferset)
 	{
 		T* pT = static_cast<T*>(this);
-		BufferSetProvider* bufferset_provider = pT->GetBufferSetProvider();
-		if(bufferset_provider) {
-			bufferset->Clear();
-			bufferset->init(calculator, dataset);
-			pT->Calc(dataset, bufferset);
-			bufferset_provider->AddBufferSet(bufferset);
-		}
+		bufferset->Clear();
+		bufferset->init(calculator, dataset);
+		pT->Calc(dataset, bufferset);
 	}
 
-	inline void Calc(std::shared_ptr<DataSet> & dataset)
-	{
-		T* pT = static_cast<T*>(this);
-		//遍历BufferSet更新BufferSet数据
-		BufferSetProvider* bufferset_provider = pT->GetBufferSetProvider();
-		if(bufferset_provider) {
-			bufferset_provider->SafeHandle([&](BufferSets& buffersets){
-				auto it = buffersets.begin();
-				for(; it != buffersets.end(); ++it)
-				{
-					std::shared_ptr<BufferSet> & bufferset = it->second;
-					if(bufferset->dataset == dataset) {
-						pT->Calc(dataset, bufferset);
-					}
-				}
-			}
-			);
-		}
-	}
-
-	inline void Calc(std::shared_ptr<DataSet> & dataset, std::shared_ptr<BufferSet> & bufferset)
+	inline void Calc(std::shared_ptr<DataSet> & dataset, BufferSet* bufferset)
 	{
 		T* pT = static_cast<T*>(this);
 		bufferset->calculator->Calc(dataset, bufferset);
 	}
-
 };
 
 } // namespace XCalc

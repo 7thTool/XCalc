@@ -146,7 +146,17 @@ public:
 		ClearRefData();
 		ClearBuffer();
 	}
-	
+
+	inline void AddRefBufferSet(std::shared_ptr<BufferSet> bufferset)
+	{
+		refbuffersets.push_back(bufferset);
+	}
+
+	inline void AddRefDataSet(std::shared_ptr<DataSet> dataset)
+	{
+		refdatasets.push_back(dataset);
+	}
+
 	inline void ClearRefData() 
 	{
 		refdatasets.clear();
