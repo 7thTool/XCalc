@@ -94,6 +94,7 @@ namespace XCalc {
 			}
 			return nullptr;
 		}
+		inline size_t GetCalculatorCount() { return calculators_.size(); }
 		template<typename F>
 		inline void SafeHandle(F f)
 		{

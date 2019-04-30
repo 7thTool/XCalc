@@ -79,6 +79,8 @@ struct BufferInfo : public BaseSet
 {
 	std::string name;
 
+	BufferInfo(const char* name):name(name){}
+
     bool operator < (const BufferInfo & r) const
     {
 		return name < r.name;
