@@ -52,11 +52,11 @@ namespace XCalc {
 	{
 	public:
 		typedef TCalculator Calculator;
-		using Factory = std::function<std::shared_ptr<Calculator>(const std::string& name)>;
-		typedef std::map<std::string,Factory> Factorys;
 		typedef typename Calculator::CalcInfo CalcInfo;
 		typedef typename CalcInfo::InputSet InputSet;
 		typedef typename CalcInfo::BufferInfoSets BufferInfoSets;
+		using Factory = std::function<std::shared_ptr<Calculator>(const std::string& name, const InputSet& inputs)>;
+		typedef std::map<std::string,Factory> Factorys;
 		struct CalcInfoPtrLess
 		{
 			bool operator()(const CalcInfo* const& x, const CalcInfo* const& y) const
@@ -86,7 +86,7 @@ namespace XCalc {
 			}
 			auto it_f = factorys_.find(calcinfo.name);
 			if(it_f != factorys_.end()) {
-				auto ptr = it_f->second(calcinfo.name);
+				auto ptr = it_f->second(calcinfo.name, calcinfo.inputs);
 				if(ptr) {
 					calculators_[ptr.get()] = ptr;
 				}
