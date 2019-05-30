@@ -24,15 +24,6 @@ class XCalculator : public TCalcInfo, public std::enable_shared_from_this<T>
 
 	inline bool CalcNeedRedo(std::shared_ptr<DataSet> dataset, BufferSet* bufferset)
 	{
-		size_t buffer_count = dataset->GetFieldCount();
-		for(size_t i = 0; i < buffer_count; i++)
-		{
-			size_t buffer_size = dataset->GetFieldSize(i);
-			if (buffer_size < bufferset->buffer_size)
-			{
-				return true;
-			}
-		}
 		return false;
 	}
 
@@ -44,14 +35,10 @@ class XCalculator : public TCalcInfo, public std::enable_shared_from_this<T>
 	inline void CalcInit(std::shared_ptr<DataSet> dataset, BufferSet* bufferset)
 	{
 		T *pT = static_cast<T *>(this);
-		if(bufferset->IsEmpty()) {
-			bufferset->Init(pT->shared_from_this(), dataset);
-		} else {
-			bool redo = pT->CalcNeedRedo(dataset, bufferset);
-			if(redo) 
-			{
-				bufferset->ClearBuffer();
-			}
+		bool redo = pT->CalcNeedRedo(dataset, bufferset);
+		if(redo) 
+		{
+			bufferset->ClearBuffer();
 		}
 	}
 	

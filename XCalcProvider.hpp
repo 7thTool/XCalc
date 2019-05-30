@@ -152,7 +152,9 @@ namespace XCalc {
 			} else {
 				auto bufferset = new BufferSetEx(calculator,calcdata);
 				if(bufferset) {
+					lock.unlock();
 					calculator->Calc(calcdata, bufferset);
+					lock.lock();
 					bufferset->ref = 1;
 					buffersets_[bufferset] = bufferset;
 					AddCaller(dynamic_cast<const BufferSetEx*>(caller), bufferset);

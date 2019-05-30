@@ -110,7 +110,11 @@ public:
 	}
 	BufferSet(std::shared_ptr<Calculator> calculator, std::shared_ptr<DataSet> dataset)
 	{
-		Init(calculator,dataset);
+		this->calculator = calculator;
+		this->dataset = dataset;
+		this->refdatasets.clear();
+		this->refbuffersets.clear();
+		this->buffer_size = 0;
 	}
 
     inline bool operator < (const BufferSet & r) const
@@ -127,19 +131,6 @@ public:
     {
         return (calculator == r.calculator && *dataset == *r.dataset);
     }
-
-	inline bool IsEmpty() {
-		return !calculator || !dataset;
-	}
-
-	inline void Init(std::shared_ptr<Calculator> calculator, std::shared_ptr<DataSet> dataset)
-	{
-		this->calculator = calculator;
-		this->dataset = dataset;
-		this->refdatasets.clear();
-		this->refbuffersets.clear();
-		this->buffer_size = 0;
-	}
 
 	inline void Clear()
 	{
